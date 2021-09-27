@@ -7,7 +7,7 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
 
-MAX_INSTR = 512
+MAX_INSTR = 256
 POP_SIZE = 50
 
 def win(boardstate):
@@ -62,16 +62,13 @@ LOSE_NO_INPUT = -100
 LOSE_LOOP = -1000 * POP_SIZE
 
 def run_and_apply(code, state):
-    print(state)
     out = run(code,state,MAX_INSTR)
-    print(state)
     if(len(out) == 0):
         return LOSE_NO_INPUT
     if(out[0] > 8):
         return LOSE_OOB
     if(out[0] == -1):
         return LOSE_LOOP
-    print(state[out[0]])
     if(state[out[0]] != 0):
         return LOSE_OOB
     state[out[0]] = 1
@@ -112,7 +109,7 @@ def play_game(i, adv, game):
         game = flip(game)
 
 def get_relative_fitness(i,pop):
-    games_won = 0
+    games_won = -len(i)
     for adv in pop:
         game = [0,0,0,0,0,0,0,0,0]
         if(i+"|"+adv not in cached):
@@ -146,14 +143,15 @@ def print_scores(score):
 
 pop = []
 
-game = [0,0,0,0,0,0,0,0,0]
-while(True):
-    run_and_apply(">,[<<+>,]<<.,->-[,]",game)
-    print(game[0:3])
-    print(game[3:6])
-    print(game[6:9])
-    game[int(input())] = 2
-exit()
+def play():
+    game = [0,0,0,0,0,0,0,0,0]
+    while(True):
+        run_and_apply(">,[<<+>,]<<.,->-[,]",game)
+        print(game[0:3])
+        print(game[3:6])
+        print(game[6:9])
+        game[int(input())] = 2
+    exit()
 
 
 #START
@@ -168,9 +166,11 @@ scores = []
 for v in pop:
     scores.append([get_relative_fitness(v,pop),v])
 
+printitr = 10
+gen = 0
 
 while (True):
-    print("select")
+    #print("select")
     #Selection
     scores = sorted(scores, key=lambda x: x[0])
     scores.reverse()
@@ -191,9 +191,14 @@ while (True):
 
     scores = scores2
 
-    print(scores[0][1] + " VS " + scores[1][1])
-    printgame(scores[0][1],scores[1][1])
-    print_scores(scores)
+    printitr -= 1
+    gen += 1
+    if(printitr == 0):
+        print("GENERATION " + str(gen))
+        print(scores[0][1] + " VS " + scores[1][1])
+        printitr = 10
+        printgame(scores[0][1],scores[1][1])
+    #print_scores(scores)
 
     pop = list(map(lambda n: n[1],scores))
 
@@ -203,7 +208,7 @@ while (True):
     # make only unique programs
     pop = set(pop)
     
-    print("prune")
+    #print("prune")
 
     # remove the null program
     if "" in pop:
@@ -212,7 +217,7 @@ while (True):
     # remove useless []'s, which best case is NOOP and worse case is endless loop
     pop =  [x for x in pop if not "[]" in x]
 
-    print("score")
+    #print("score")
     scores = []
     #Compute fitness
     for v in pop:
