@@ -1,22 +1,19 @@
 from bf import *
 import random
 
-
-
 atomic_chars = "<>+-.,"
 
 winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
-MAX_INSTR = 1000
-POP_SIZE = 100
+cached = {}
+
+MAX_INSTR = 256 * 16
+POP_SIZE = 50
 
 def win(boardstate):
     for v in winrows:
         if(boardstate[v[0]] == 1 and boardstate[v[1]] == 1 and boardstate[v[2]] == 1):
-            return 1
-        if(boardstate[v[0]] == 1 and boardstate[v[1]] == 1 and boardstate[v[2]] == 1):
-            return -1
-    return 0
+            return True
 
 def mutate(parent):
     child = list(parent)
@@ -56,57 +53,87 @@ def mutate(parent):
         child.insert(end,"]")
     return ''.join(child)
 
+WIN = 1000
+SURVIVE = 0
+LOSE_OOB = -50
+LOSE_NO_INPUT = -100
+LOSE_LOOP = -1000 * POP_SIZE
 
 def run_and_apply(code, state):
     out = run(code,state,MAX_INSTR)
     if(len(out) == 0):
-        return False
+        return LOSE_NO_INPUT
     if(out[0] > 8):
-        return False
+        return LOSE_OOB
     if(out[0] == -1):
-        return False
-
+        return LOSE_LOOP
     if(state[out[0]] != 0):
-        return False
+        return LOSE_OOB
     state[out[0]] = 1
-    return True
+    return 0
 
 def flip(game):
     out = []
     for v in game:
         if(v == 1):
             out.append(2)
-        if(v == 2):
+        elif(v == 2):
             out.append(1)
-        out.append(v)
+        else:
+            out.append(v)
     return out
+
+
+def play_game(i, adv, game):
+    while(True):
+        # our turn
+        move = run_and_apply(i,game)
+        if(move == 0):
+            # we made a valid move and won
+            if(win(game)):
+                print("someone won!")
+                return [WIN, game]
+        else:
+            return [move,game]
+        # their turn
+        game = flip(game)
+        move = run_and_apply(adv,game)
+        if(move == 0):
+            # they made a valid move and won
+            if(win(game)):
+                return [LOSE_VAL, game]
+        else:
+            # they crashed
+            return [SURVIVE,game]
+        game = flip(game)
 
 def get_relative_fitness(i,pop):
     games_won = 0
     for adv in pop:
         game = [0,0,0,0,0,0,0,0,0]
-        while(True):
-            # our turn
-            if(run_and_apply(i,game)):
-                # we made a valid move and won
-                if(win(game)):
-                    games_won += 1
-                    break
-            else:
-                # we crashed
-                break
+        if(i+"|"+adv not in cached):
+            # Take points for winning, tieing, or losing, going first
+            val = play_game(i,adv,game)[0]
+            game = [0,0,0,0,0,0,0,0,0]
 
-            # their turn
-            game = flip(game)
-            if(run_and_apply(i,game)):
-                # they made a valid move and won
-                if(win(game)):
-                    break
-            else:
-                # they crashed
-                games_won += 1
-                break
+            # Take points for winning, tieing, or losing, going second.
+            # But, the opponent goes first.
+            em = run_and_apply(adv, game)
+            if(em == 0):
+                val += play_game(i,adv,game)[0]
+
+            cached[i+"|"+adv] = val
+        games_won += cached[i+"|"+adv]
     return games_won
+
+def printgame(v,adv):
+    game = [0,0,0,0,0,0,0,0,0]
+    res = play_game(v,adv,game) 
+    print("winner: " + (v if res[0] >= 0 else adv))
+    print(res[1][0:3])
+    print(res[1][3:6])
+    print(res[1][6:9])
+
 
 def print_scores(score):
     for v in score:
@@ -122,15 +149,36 @@ for v in atomic_chars:
 
 scores = []
 
+
 #Compute fitness
 for v in pop:
     scores.append([get_relative_fitness(v,pop),v])
 
 
 while (True):
+    print("select")
     #Selection
     scores = sorted(scores, key=lambda x: x[0])
+    scores.reverse()
     scores = scores[:POP_SIZE]
+
+    # Don't let one line of algorithms dominate. Encourage diveristy.
+    bucket = {}
+    for i in scores:
+        if(i[0] not in bucket):
+            bucket[i[0]] = []
+        bucket[i[0]].append(i)
+
+    scores2 = []
+    while(len(scores2) < POP_SIZE and len(scores2) != len(scores)):
+        for i in bucket:
+            if(len(bucket[i]) > 0):
+                scores2.append(bucket[i].pop())
+
+    scores = scores2
+
+    print(scores[0][1] + " VS " + scores[1][1])
+    printgame(scores[0][1],scores[1][1])
     print_scores(scores)
 
     pop = list(map(lambda n: n[1],scores))
@@ -138,11 +186,19 @@ while (True):
     #Crossover
     pop = pop + list(map(lambda n: mutate(n),pop))
 
+    # make only unique programs
     pop = set(pop)
+    
+    print("prune")
+
     # remove the null program
     if "" in pop:
         pop.remove("")
 
+    # remove useless []'s, which best case is NOOP and worse case is endless loop
+    pop =  [x for x in pop if not "[]" in x]
+
+    print("score")
     scores = []
     #Compute fitness
     for v in pop:

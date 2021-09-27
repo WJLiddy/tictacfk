@@ -58,7 +58,7 @@ def create_jump_table(chars):
 
 class Array(object):
     def __init__(self):
-        self._cells = [0] * 10000  # preallocation
+        self._cells = [0] * 256  # preallocation
         self._index = 0
 
     def get(self):
@@ -128,10 +128,10 @@ def run(chars, input, maxinstr):
                 ptr.set(input[iptr])
                 iptr+=1
 
-        elif char == '[' and ptr.get() == 0:
+        elif char == '[' and ptr.get() % 256 == 0:
             position = get_jump(jump_table, position)
 
-        elif char == ']' and ptr.get() != 0:
+        elif char == ']' and ptr.get() % 256 != 0:
             position = get_jump(jump_table, position)
 
         position += 1
