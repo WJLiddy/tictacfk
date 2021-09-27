@@ -7,8 +7,8 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
 
-MAX_INSTR = 256
-POP_SIZE = 50
+MAX_INSTR = 128
+POP_SIZE = 100
 
 def win(boardstate):
     for v in winrows:
@@ -23,7 +23,7 @@ def mutate(parent):
         #insert
         child.insert(random.randint(0,len(child)),random.choice(atomic_chars))
 
-        # delete, special care to delete both parts of a loop.
+    # favor deletion over anything else.
     if(mut_type >= 2 and mut_type <= 9):
 
         to_del_idx = random.randint(0,len(child)-1)
@@ -108,8 +108,16 @@ def play_game(i, adv, game):
             return [SURVIVE,game]
         game = flip(game)
 
-def get_relative_fitness(i,pop):
-    games_won = -len(i)
+
+#it can mutate into something neat.
+def get_relative_fitness(i,pop,grow):
+    # having extra shit down the line is possibly good?
+    # however, prioritizing shorter programs wastes FAR less time.
+    # up to you about len(i)
+    # IDEA - period of experimenation and then a "squeeze?"
+    games_won = 0
+    if(grow):
+        games_won = -(len(i))
     for adv in pop:
         game = [0,0,0,0,0,0,0,0,0]
         if(i+"|"+adv not in cached):
@@ -164,9 +172,10 @@ scores = []
 
 #Compute fitness
 for v in pop:
-    scores.append([get_relative_fitness(v,pop),v])
+    scores.append([get_relative_fitness(v,pop),v,False])
 
-printitr = 10
+printitr = 25
+last_gen = []
 gen = 0
 
 while (True):
@@ -196,9 +205,13 @@ while (True):
     if(printitr == 0):
         print("GENERATION " + str(gen))
         print(scores[0][1] + " VS " + scores[1][1])
-        printitr = 10
+        printitr = 25
         printgame(scores[0][1],scores[1][1])
-    #print_scores(scores)
+        temp = scores[0]
+        # every 25 generations, introduce the MVP from last gen in case we converged wrongly.
+        scores = scores + last_gen
+        last_gen.append(scores[0])
+        #print_scores(scores)
 
     pop = list(map(lambda n: n[1],scores))
 
@@ -221,5 +234,5 @@ while (True):
     scores = []
     #Compute fitness
     for v in pop:
-        scores.append([get_relative_fitness(v,pop),v])
+        scores.append([get_relative_fitness(v,pop, (gen % 50 < 25)),v])
 
