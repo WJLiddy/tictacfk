@@ -7,7 +7,7 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
 
-MAX_INSTR = 256 * 16
+MAX_INSTR = 256
 POP_SIZE = 50
 
 def win(boardstate):
@@ -17,13 +17,14 @@ def win(boardstate):
 
 def mutate(parent):
     child = list(parent)
-    mut_type = random.randint(0,2)
-    if(mut_type == 0):
+    mut_type = random.randint(0,10)
+
+    if(mut_type < 2):
         #insert
         child.insert(random.randint(0,len(child)),random.choice(atomic_chars))
 
         # delete, special care to delete both parts of a loop.
-    if(mut_type == 1):
+    if(mut_type >= 2 and mut_type <= 9):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -44,7 +45,7 @@ def mutate(parent):
         
         pass
 
-    if(mut_type == 2):
+    if(mut_type == 10):
         #insert loop. Generate a start position
         start = random.randint(0,len(child))
         end = random.randint(start+1,len(child)+1)
@@ -53,7 +54,8 @@ def mutate(parent):
         child.insert(end,"]")
     return ''.join(child)
 
-WIN = 1000
+WIN = 100
+LOSE = -5
 SURVIVE = 0
 LOSE_OOB = -50
 LOSE_NO_INPUT = -100
@@ -91,7 +93,6 @@ def play_game(i, adv, game):
         if(move == 0):
             # we made a valid move and won
             if(win(game)):
-                print("someone won!")
                 return [WIN, game]
         else:
             return [move,game]
@@ -101,7 +102,7 @@ def play_game(i, adv, game):
         if(move == 0):
             # they made a valid move and won
             if(win(game)):
-                return [LOSE_VAL, game]
+                return [LOSE, game]
         else:
             # they crashed
             return [SURVIVE,game]
