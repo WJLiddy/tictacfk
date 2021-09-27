@@ -7,7 +7,7 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
 
-MAX_INSTR = 256
+MAX_INSTR = 512
 POP_SIZE = 50
 
 def win(boardstate):
@@ -62,13 +62,16 @@ LOSE_NO_INPUT = -100
 LOSE_LOOP = -1000 * POP_SIZE
 
 def run_and_apply(code, state):
+    print(state)
     out = run(code,state,MAX_INSTR)
+    print(state)
     if(len(out) == 0):
         return LOSE_NO_INPUT
     if(out[0] > 8):
         return LOSE_OOB
     if(out[0] == -1):
         return LOSE_LOOP
+    print(state[out[0]])
     if(state[out[0]] != 0):
         return LOSE_OOB
     state[out[0]] = 1
@@ -142,6 +145,16 @@ def print_scores(score):
 
 
 pop = []
+
+game = [0,0,0,0,0,0,0,0,0]
+while(True):
+    run_and_apply(">,[<<+>,]<<.,->-[,]",game)
+    print(game[0:3])
+    print(game[3:6])
+    print(game[6:9])
+    game[int(input())] = 2
+exit()
+
 
 #START
 #Generate the initial population
