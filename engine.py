@@ -7,8 +7,8 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
 
-MAX_INSTR = 128
-POP_SIZE = 100
+MAX_INSTR = 256
+POP_SIZE = 50
 
 def win(boardstate):
     for v in winrows:
@@ -19,12 +19,12 @@ def mutate(parent):
     child = list(parent)
     mut_type = random.randint(0,10)
 
-    if(mut_type < 2):
-        #insert
+    #insert sometimes.
+    if(mut_type < 5):
         child.insert(random.randint(0,len(child)),random.choice(atomic_chars))
 
-    # favor deletion over anything else.
-    if(mut_type >= 2 and mut_type <= 9):
+    #delete sometimes.
+    if(mut_type >= 5 and mut_type <= 9):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -45,6 +45,7 @@ def mutate(parent):
         
         pass
 
+    #loop - used sparingly
     if(mut_type == 10):
         #insert loop. Generate a start position
         start = random.randint(0,len(child))
@@ -54,24 +55,33 @@ def mutate(parent):
         child.insert(end,"]")
     return ''.join(child)
 
-WIN = 100
-LOSE = -5
+# winning worth 1000
+WIN = 1000
+# survival with 0
 SURVIVE = 0
-LOSE_OOB = -50
-LOSE_NO_INPUT = -100
+# losing worth -50 (hey, you didn't crash!!)
+LOSE = -50
+# losing because you sent shit is -500
+LOSE_OOB = -500
+# losing because you did NOTHING is -1000
+LOSE_NO_INPUT = -1000
+# losing because you ran out of computation time is the worst thing.
+# (need to have an i-- before you can have a while{})
 LOSE_LOOP = -1000 * POP_SIZE
 
-def run_and_apply(code, state):
+def run_and_apply(code, state, printstr):
     out = run(code,state,MAX_INSTR)
-    if(len(out) == 0):
+    if(printstr):
+        print(out[1])
+    if(len(out[0]) == 0):
         return LOSE_NO_INPUT
-    if(out[0] > 8):
+    if(out[0][0] > 8):
         return LOSE_OOB
-    if(out[0] == -1):
+    if(out[0][0] == -1):
         return LOSE_LOOP
-    if(state[out[0]] != 0):
+    if(state[out[0][0]] != 0):
         return LOSE_OOB
-    state[out[0]] = 1
+    state[out[0][0]] = 1
     return 0
 
 def flip(game):
@@ -86,10 +96,10 @@ def flip(game):
     return out
 
 
-def play_game(i, adv, game):
+def play_game(i, adv, game,useinstr):
     while(True):
         # our turn
-        move = run_and_apply(i,game)
+        move = run_and_apply(i,game,useinstr)
         if(move == 0):
             # we made a valid move and won
             if(win(game)):
@@ -98,7 +108,7 @@ def play_game(i, adv, game):
             return [move,game]
         # their turn
         game = flip(game)
-        move = run_and_apply(adv,game)
+        move = run_and_apply(adv,game,useinstr)
         if(move == 0):
             # they made a valid move and won
             if(win(game)):
@@ -122,14 +132,14 @@ def get_relative_fitness(i,pop,grow):
         game = [0,0,0,0,0,0,0,0,0]
         if(i+"|"+adv not in cached):
             # Take points for winning, tieing, or losing, going first
-            val = play_game(i,adv,game)[0]
+            val = play_game(i,adv,game,False)[0]
             game = [0,0,0,0,0,0,0,0,0]
 
             # Take points for winning, tieing, or losing, going second.
             # But, the opponent goes first.
-            em = run_and_apply(adv, game)
+            em = run_and_apply(adv, game, False)
             if(em == 0):
-                val += play_game(i,adv,game)[0]
+                val += play_game(i,adv,game, False)[0]
 
             cached[i+"|"+adv] = val
         games_won += cached[i+"|"+adv]
@@ -137,7 +147,7 @@ def get_relative_fitness(i,pop,grow):
 
 def printgame(v,adv):
     game = [0,0,0,0,0,0,0,0,0]
-    res = play_game(v,adv,game) 
+    res = play_game(v,adv,game,True) 
     print("winner: " + (v if res[0] >= 0 else adv))
     print(res[1][0:3])
     print(res[1][3:6])
@@ -154,13 +164,14 @@ pop = []
 def play():
     game = [0,0,0,0,0,0,0,0,0]
     while(True):
-        run_and_apply(">,[<<+>,]<<.,->-[,]",game)
+        run_and_apply("+>,+[,<++>,]<-.",game)
         print(game[0:3])
         print(game[3:6])
         print(game[6:9])
         game[int(input())] = 2
     exit()
 
+#play()
 
 #START
 #Generate the initial population
@@ -172,15 +183,13 @@ scores = []
 
 #Compute fitness
 for v in pop:
-    scores.append([get_relative_fitness(v,pop),v,False])
+    scores.append([get_relative_fitness(v,pop,False),v,])
 
 printitr = 25
 last_gen = []
 gen = 0
 
 while (True):
-    #print("select")
-    #Selection
     scores = sorted(scores, key=lambda x: x[0])
     scores.reverse()
     scores = scores[:POP_SIZE]
@@ -210,7 +219,9 @@ while (True):
         temp = scores[0]
         # every 25 generations, introduce the MVP from last gen in case we converged wrongly.
         scores = scores + last_gen
+        # pollution from adding too much? bucket could favor other algorithms?
         last_gen.append(scores[0])
+        last_gen = last_gen[-10:]
         #print_scores(scores)
 
     pop = list(map(lambda n: n[1],scores))
@@ -234,5 +245,5 @@ while (True):
     scores = []
     #Compute fitness
     for v in pop:
-        scores.append([get_relative_fitness(v,pop, (gen % 50 < 25)),v])
+        scores.append([get_relative_fitness(v,pop, ((gen % 100) < 50)),v])
 

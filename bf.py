@@ -98,7 +98,7 @@ def run(chars, input, maxinstr):
     while position < len(chars):
         instrcnt += 1
         if(instrcnt > maxinstr):
-            return [-1]
+            return [[-1], instrcnt]
         jitdriver.jit_merge_point(position=position,
                                   ptr=ptr,
                                   chars=chars,
@@ -135,7 +135,7 @@ def run(chars, input, maxinstr):
             position = get_jump(jump_table, position)
 
         position += 1
-    return result
+    return [result, instrcnt]
 
 
 def remove_comments(chars):
