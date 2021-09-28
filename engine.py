@@ -8,7 +8,7 @@ winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 cached = {}
 already_gen = {}
 MAX_INSTR = 128
-POP_SIZE = 2000
+POP_SIZE = 500
 
 def win(boardstate):
     for v in winrows:
@@ -209,7 +209,7 @@ for v in pop:
 
 gen = 2
 # only need about 15 mutations.
-genitr = 15
+genitr = 30
 best_gen = list(map(lambda n: n[1],scores))
 
 bests= []
@@ -256,7 +256,7 @@ while (True):
         print("GENERATION " + str(gen))
         print(str(scores[0][0]) + " VS " + str(scores[len(scores)-1][0]))
         printgame(scores[0][1],scores[1][1])
-        #print_scores(scores)
+        print_scores(scores)
 
         # business as usual. 
         pop = list(map(lambda n: n[1],scores))
