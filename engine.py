@@ -17,17 +17,16 @@ def win(boardstate):
 
 def mutate(parent):
     child = list(parent)
-    mut_type = random.randint(0,10)
+    mut_type = random.randint(0,14)
 
     # insert sometimes.
-    # average of 3 letters = .3 chance to get
     if(mut_type < 3):
-        for i in range(random.randint(1,5)):
+        for i in range(random.randint(1,10)):
             char = random.choice(atomic_chars)
             child.insert(random.randint(0,len(child)),char)
 
-    # .6 chance to drop
-    if(mut_type >= 3 and mut_type <= 9):
+    # big chance to drop
+    if(mut_type >= 4 and mut_type <= 13):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -49,7 +48,7 @@ def mutate(parent):
         pass
 
     #loop - used sparingly
-    if(mut_type == 10):
+    if(mut_type == 14):
         #insert loop. Generate a start position
         start = random.randint(0,len(child))
         end = random.randint(start+1,len(child)+1)
@@ -75,6 +74,7 @@ LOSE_LOOP = -10000 * POP_SIZE
 KILL = -20000 * POP_SIZE
 
 def run_and_apply(code, state, printstr):
+    #,>,>,>... just loads the state into memory
     out = run(",>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
     if(printstr):
         print(out[1])
@@ -256,7 +256,7 @@ while (True):
         print("GENERATION " + str(gen))
         print(str(scores[0][0]) + " VS " + str(scores[len(scores)-1][0]))
         printgame(scores[0][1],scores[1][1])
-        print_scores(scores)
+        #print_scores(scores)
 
         # business as usual. 
         pop = list(map(lambda n: n[1],scores))
