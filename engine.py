@@ -6,9 +6,9 @@ atomic_chars = "<>+-.,"
 winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
-seen = {}
+already_gen = {}
 MAX_INSTR = 128
-POP_SIZE = 250
+POP_SIZE = 2000
 
 def win(boardstate):
     for v in winrows:
@@ -21,7 +21,7 @@ def mutate(parent):
 
     # insert sometimes.
     # average of 3 letters = .3 chance to get
-    if(mut_type < 1):
+    if(mut_type < 3):
         for i in range(random.randint(1,5)):
             char = random.choice(atomic_chars)
             child.insert(random.randint(0,len(child)),char)
@@ -67,7 +67,7 @@ SURVIVE = 0
 # losing because you sent shit is -10000
 LOSE_OOB = -1000
 # losing because you did NOTHING is -100000
-LOSE_NO_INPUT = -10000
+LOSE_NO_INPUT = -1000
 # losing because you ran out of computation time is the worst thing.
 # (need to have an i-- before you can have a while{})
 LOSE_LOOP = -10000 * POP_SIZE
@@ -75,7 +75,7 @@ LOSE_LOOP = -10000 * POP_SIZE
 KILL = -20000 * POP_SIZE
 
 def run_and_apply(code, state, printstr):
-    out = run(code,state,MAX_INSTR)
+    out = run(",>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
     if(printstr):
         print(out[1])
     if(len(out[0]) == 0):
@@ -203,13 +203,11 @@ for v in atomic_chars:
 
 scores = []
 
-already_gen ={}
-
 #Compute fitness
 for v in pop:
     scores.append([get_relative_fitness(v,pop),v])
 
-gen = 6
+gen = 2
 # only need about 15 mutations.
 genitr = 15
 best_gen = list(map(lambda n: n[1],scores))
@@ -219,11 +217,21 @@ bests= []
 while (True):
 
     gen += 1
+
+    # intermediate filter or nah?
     
     # We have mutated all the parents from each generation.
     # Lets see if any have surpassed their parents.
     if(gen % genitr == 0):
 
+        print("c1->" + str(len(cached.values()) / (POP_SIZE * POP_SIZE * 4)))
+        if(len(cached.values()) > POP_SIZE * POP_SIZE * 4):
+            cached.clear()
+
+        print("c2->" + str(len(already_gen) / 100000))
+        if(len(already_gen) > 100000):
+            already_gen.clear()
+        
         # This is a check to make sure that any algo that gets this far and dies does NOT come back.
         pop2 = []
         for p in pop:
@@ -236,14 +244,7 @@ while (True):
         scores = []
         for v in pop:
             scores.append([get_relative_fitness(v,best_gen),v])
-        continue
     
-    # Now we have our best-of, with the new parents.
-    # Let's see how they all stack up-
-    # taking care to diversify the list in case the new parent isn't different enough
-    if(gen % genitr == 1):
-        system("cls")
-
         # cut down the best algorithms into a diverse list, and set it as new best gen.
         scores = filter_diverse(scores)
         scores = scores[:POP_SIZE]
@@ -252,16 +253,13 @@ while (True):
 
         bests.append(scores[0][0])
 
-        
-
-
         print("GENERATION " + str(gen))
         print(str(scores[0][0]) + " VS " + str(scores[len(scores)-1][0]))
         printgame(scores[0][1],scores[1][1])
         #print_scores(scores)
 
-    # business as usual. 
-    pop = list(map(lambda n: n[1],scores))
+        # business as usual. 
+        pop = list(map(lambda n: n[1],scores))
 
 
     # allow another step of mutation if there are not many algos alive.
