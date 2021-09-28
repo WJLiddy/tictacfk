@@ -1,14 +1,14 @@
 from bf import *
 import random
-
+from os import system, name
 atomic_chars = "<>+-.,"
 
 winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
 
 cached = {}
-
-MAX_INSTR = 256
-POP_SIZE = 50
+seen = {}
+MAX_INSTR = 128
+POP_SIZE = 250
 
 def win(boardstate):
     for v in winrows:
@@ -19,12 +19,15 @@ def mutate(parent):
     child = list(parent)
     mut_type = random.randint(0,10)
 
-    #insert sometimes.
-    if(mut_type < 5):
-        child.insert(random.randint(0,len(child)),random.choice(atomic_chars))
+    # insert sometimes.
+    # average of 3 letters = .3 chance to get
+    if(mut_type < 1):
+        for i in range(random.randint(1,5)):
+            char = random.choice(atomic_chars)
+            child.insert(random.randint(0,len(child)),char)
 
-    #delete sometimes.
-    if(mut_type >= 5 and mut_type <= 9):
+    # .6 chance to drop
+    if(mut_type >= 3 and mut_type <= 9):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -55,19 +58,21 @@ def mutate(parent):
         child.insert(end,"]")
     return ''.join(child)
 
-# winning worth 1000
-WIN = 1000
-# survival with 0
+# winning worth 100
+WIN = 100
+# losing worth 50 (hey, you didn't crash!!)
+LOSE = 50
+# survival worth 0 - doesn't say much about you
 SURVIVE = 0
-# losing worth -50 (hey, you didn't crash!!)
-LOSE = -50
-# losing because you sent shit is -500
-LOSE_OOB = -500
-# losing because you did NOTHING is -1000
-LOSE_NO_INPUT = -1000
+# losing because you sent shit is -10000
+LOSE_OOB = -1000
+# losing because you did NOTHING is -100000
+LOSE_NO_INPUT = -10000
 # losing because you ran out of computation time is the worst thing.
 # (need to have an i-- before you can have a while{})
-LOSE_LOOP = -1000 * POP_SIZE
+LOSE_LOOP = -10000 * POP_SIZE
+
+KILL = -20000 * POP_SIZE
 
 def run_and_apply(code, state, printstr):
     out = run(code,state,MAX_INSTR)
@@ -120,14 +125,12 @@ def play_game(i, adv, game,useinstr):
 
 
 #it can mutate into something neat.
-def get_relative_fitness(i,pop,grow):
+def get_relative_fitness(i,pop):
     # having extra shit down the line is possibly good?
     # however, prioritizing shorter programs wastes FAR less time.
     # up to you about len(i)
     # IDEA - period of experimenation and then a "squeeze?"
     games_won = 0
-    if(grow):
-        games_won = -(len(i))
     for adv in pop:
         game = [0,0,0,0,0,0,0,0,0]
         if(i+"|"+adv not in cached):
@@ -171,6 +174,26 @@ def play():
         game[int(input())] = 2
     exit()
 
+def filter_diverse(scores):
+    # Don't let one line of algorithms dominate. Encourage diverity.
+    bucket = {}
+    for i in scores:
+        if(i[0] not in bucket):
+            bucket[i[0]] = []
+        bucket[i[0]].append(i)
+
+    scores2 = []
+    for i in bucket:
+        opts = sorted(bucket[i], key=lambda x: len(x[1]))
+        if(opts[0][0] > KILL):
+            # keep the shortest codes in the class
+            for v in opts:
+                if(len(v[1]) == len(opts[0][1])):
+                    scores2.append(v)
+    scores2 = sorted(scores2, key=lambda x: x[0])
+    scores2.reverse()
+    return scores2
+
 #play()
 
 #START
@@ -180,54 +203,72 @@ for v in atomic_chars:
 
 scores = []
 
+already_gen ={}
 
 #Compute fitness
 for v in pop:
-    scores.append([get_relative_fitness(v,pop,False),v,])
+    scores.append([get_relative_fitness(v,pop),v])
 
-printitr = 25
-last_gen = []
-gen = 0
+gen = 6
+# only need about 15 mutations.
+genitr = 15
+best_gen = list(map(lambda n: n[1],scores))
+
+bests= []
 
 while (True):
-    scores = sorted(scores, key=lambda x: x[0])
-    scores.reverse()
-    scores = scores[:POP_SIZE]
 
-    # Don't let one line of algorithms dominate. Encourage diveristy.
-    bucket = {}
-    for i in scores:
-        if(i[0] not in bucket):
-            bucket[i[0]] = []
-        bucket[i[0]].append(i)
-
-    scores2 = []
-    while(len(scores2) < POP_SIZE and len(scores2) != len(scores)):
-        for i in bucket:
-            if(len(bucket[i]) > 0):
-                scores2.append(bucket[i].pop())
-
-    scores = scores2
-
-    printitr -= 1
     gen += 1
-    if(printitr == 0):
+    
+    # We have mutated all the parents from each generation.
+    # Lets see if any have surpassed their parents.
+    if(gen % genitr == 0):
+
+        # This is a check to make sure that any algo that gets this far and dies does NOT come back.
+        pop2 = []
+        for p in pop:
+            if(p not in already_gen):
+                pop2.append(p)
+            already_gen[p] = True
+        pop = pop2
+
+        best_gen = best_gen + list(map(lambda n: n[1],scores))
+        scores = []
+        for v in pop:
+            scores.append([get_relative_fitness(v,best_gen),v])
+        continue
+    
+    # Now we have our best-of, with the new parents.
+    # Let's see how they all stack up-
+    # taking care to diversify the list in case the new parent isn't different enough
+    if(gen % genitr == 1):
+        system("cls")
+
+        # cut down the best algorithms into a diverse list, and set it as new best gen.
+        scores = filter_diverse(scores)
+        scores = scores[:POP_SIZE]
+        best_gen = list(map(lambda n: n[1],scores))
+        pop[:] = list(best_gen)
+
+        bests.append(scores[0][0])
+
+        
+
+
         print("GENERATION " + str(gen))
-        print(scores[0][1] + " VS " + scores[1][1])
-        printitr = 25
+        print(str(scores[0][0]) + " VS " + str(scores[len(scores)-1][0]))
         printgame(scores[0][1],scores[1][1])
-        temp = scores[0]
-        # every 25 generations, introduce the MVP from last gen in case we converged wrongly.
-        scores = scores + last_gen
-        # pollution from adding too much? bucket could favor other algorithms?
-        last_gen.append(scores[0])
-        last_gen = last_gen[-10:]
         #print_scores(scores)
 
+    # business as usual. 
     pop = list(map(lambda n: n[1],scores))
 
-    #Crossover
-    pop = pop + list(map(lambda n: mutate(n),pop))
+
+    # allow another step of mutation if there are not many algos alive.
+    if(len(pop) <= POP_SIZE):
+        pop = pop + list(map(lambda n: mutate(n),pop))
+    else:
+        pop = list(map(lambda n: mutate(n),pop))
 
     # make only unique programs
     pop = set(pop)
@@ -243,7 +284,5 @@ while (True):
 
     #print("score")
     scores = []
-    #Compute fitness
-    for v in pop:
-        scores.append([get_relative_fitness(v,pop, ((gen % 100) < 50)),v])
+
 
