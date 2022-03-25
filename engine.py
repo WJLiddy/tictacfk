@@ -1,32 +1,154 @@
 from bf import *
 import random
 from os import system, name
-atomic_chars = "<>+-.,"
 
 winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
+POP_SIZE = 3000
+# pop size of 200 is FAR too small.
+BEST_GEN_SIZE = 500
 
-cached = {}
-already_gen = {}
-MAX_INSTR = 128
-POP_SIZE = 500
+# --- TIC TAC TOE LOGIC ---
 
+# detect win state.
 def win(boardstate):
     for v in winrows:
         if(boardstate[v[0]] == 1 and boardstate[v[1]] == 1 and boardstate[v[2]] == 1):
             return True
+    return False
 
+# flip tic tac toe game board.
+def flip(game):
+    out = []
+    for v in game:
+        if(v == 1):
+            out.append(2)
+        elif(v == 2):
+            out.append(1)
+        else:
+            out.append(v)
+    return out
+
+# winning worth 100
+WIN = 100
+# losing worth 50 (hey, you didn't crash!!)
+LOSE = 50
+# survival worth 0 - doesn't say much about you
+SURVIVE = 0
+# losing because you sent shit is -1000
+LOSE_OOB = -1000
+# losing because you did NOTHING is -5000
+LOSE_NO_INPUT = -5000
+# losing because you ran out of computation time is the worst thing.
+# (you need to have an i-- before you can have a while{})
+LOSE_LOOP = -10000 * POP_SIZE
+
+# run and apply the brainfuck code to the game board. printstr if you want to see the new state.
+# returns 0 if success, otherwise, the penalty for an invalid output that means the program is invalid and should be stopped.
+def run_and_apply(code, state, printstr):
+    #,>,>,>... just loads the state into memory
+    out = run(",>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
+    if(printstr):
+        print("instr executed: " + str(out[1]))
+        print("Move was " + str(out[0]))
+    #  you didn't leave a move in the output
+    if(len(out[0]) == 0):
+        return LOSE_NO_INPUT
+    #  your move wasn't 1-9.
+    if(out[0][0] > 8):
+        return LOSE_OOB
+    #  you tried to place a move where there already was one.
+    if(state[out[0][0]] != 0):
+        return LOSE_OOB
+    #  you endless loop'd.
+    if(out[0][0] == -1):
+        return LOSE_LOOP
+    # set the piece, and continue.
+    state[out[0][0]] = 1
+    return 0
+
+
+# --- ANALYSIS CODE --- 
+
+cached = {}
+
+# play a game between brainfuck programs "i" and "adv". Return the weighted value of the result (see above) and the board state.
+def play_game(i, adv, game, useinstr):
+    while(True):
+        # our turn
+        move = run_and_apply(i,game,useinstr)
+        if(move == 0):
+            # we made a valid move and won
+            if(win(game)):
+                return [WIN, game]
+        else:
+            # run_and_apply returned non-zero, return it.
+            return [move,game]
+        # their turn
+        game = flip(game)
+        move = run_and_apply(adv,game,useinstr)
+        if(move == 0):
+            # they made a valid move and won
+            if(win(game)):
+                return [LOSE, game]
+        else:
+            # they crashed
+            return [SURVIVE,game]
+        game = flip(game)
+
+# play a game against every other program in the population, and sum the scores.
+def get_relative_fitness(i,pop):
+    games_won = 0
+    for adv in pop:
+        game = [0,0,0,0,0,0,0,0,0]
+        # cache games we've already played.
+        if(i+"|"+adv not in cached):
+            # Take points for winning, tieing, or losing, going first
+            val = play_game(i,adv,game,False)[0]
+            game = [0,0,0,0,0,0,0,0,0]
+
+            # Take points for winning, tieing, or losing, going second.
+            # But, the opponent goes first.
+            em = run_and_apply(adv, game, False)
+            if(em == 0):
+                val += play_game(i,adv,game, False)[0]
+            cached[i+"|"+adv] = val
+        games_won += cached[i+"|"+adv]
+    return games_won
+
+# print the result between two programs.
+def printgame(v,adv):
+    game = [0,0,0,0,0,0,0,0,0]
+    res = play_game(v,adv,game,True) 
+    print("winner: " + (v if res[0] >= 0 else adv))
+    print(res[1][0:3])
+    print(res[1][3:6])
+    print(res[1][6:9])
+
+# --- GENETIC ALGO CODE ---
+atomic_chars = "<>+-."
+# don't include "," since there's nothing else to read.
+MAX_INSTR = 256
+
+def mutaten(parent,N):
+    out = parent
+    for i in range(random.randint(0,N)):
+        out = mutate(out)
+    return out
+
+# simple mutation, adds or deletes atomic character(s) or a list.
 def mutate(parent):
     child = list(parent)
     mut_type = random.randint(0,14)
 
     # insert sometimes.
     if(mut_type < 3):
-        for i in range(random.randint(1,10)):
             char = random.choice(atomic_chars)
-            child.insert(random.randint(0,len(child)),char)
+            pos = random.randint(0,len(child))
+            for i in range(random.randint(1,5)):
+                child.insert(pos,char)
 
     # big chance to drop
-    if(mut_type >= 4 and mut_type <= 13):
+    if(len(child) > 0 and mut_type >= 4 and mut_type <= 13):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -57,125 +179,25 @@ def mutate(parent):
         child.insert(end,"]")
     return ''.join(child)
 
-# winning worth 100
-WIN = 100
-# losing worth 50 (hey, you didn't crash!!)
-LOSE = 50
-# survival worth 0 - doesn't say much about you
-SURVIVE = 0
-# losing because you sent shit is -10000
-LOSE_OOB = -1000
-# losing because you did NOTHING is -100000
-LOSE_NO_INPUT = -1000
-# losing because you ran out of computation time is the worst thing.
-# (need to have an i-- before you can have a while{})
-LOSE_LOOP = -10000 * POP_SIZE
-
-KILL = -20000 * POP_SIZE
-
-def run_and_apply(code, state, printstr):
-    #,>,>,>... just loads the state into memory
-    out = run(",>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
-    if(printstr):
-        print(out[1])
-    if(len(out[0]) == 0):
-        return LOSE_NO_INPUT
-    if(out[0][0] > 8):
-        return LOSE_OOB
-    if(out[0][0] == -1):
-        return LOSE_LOOP
-    if(state[out[0][0]] != 0):
-        return LOSE_OOB
-    state[out[0][0]] = 1
-    return 0
-
-def flip(game):
-    out = []
-    for v in game:
-        if(v == 1):
-            out.append(2)
-        elif(v == 2):
-            out.append(1)
-        else:
-            out.append(v)
-    return out
-
-
-def play_game(i, adv, game,useinstr):
-    while(True):
-        # our turn
-        move = run_and_apply(i,game,useinstr)
-        if(move == 0):
-            # we made a valid move and won
-            if(win(game)):
-                return [WIN, game]
-        else:
-            return [move,game]
-        # their turn
-        game = flip(game)
-        move = run_and_apply(adv,game,useinstr)
-        if(move == 0):
-            # they made a valid move and won
-            if(win(game)):
-                return [LOSE, game]
-        else:
-            # they crashed
-            return [SURVIVE,game]
-        game = flip(game)
-
-
-#it can mutate into something neat.
-def get_relative_fitness(i,pop):
-    # having extra shit down the line is possibly good?
-    # however, prioritizing shorter programs wastes FAR less time.
-    # up to you about len(i)
-    # IDEA - period of experimenation and then a "squeeze?"
-    games_won = 0
-    for adv in pop:
-        game = [0,0,0,0,0,0,0,0,0]
-        if(i+"|"+adv not in cached):
-            # Take points for winning, tieing, or losing, going first
-            val = play_game(i,adv,game,False)[0]
-            game = [0,0,0,0,0,0,0,0,0]
-
-            # Take points for winning, tieing, or losing, going second.
-            # But, the opponent goes first.
-            em = run_and_apply(adv, game, False)
-            if(em == 0):
-                val += play_game(i,adv,game, False)[0]
-
-            cached[i+"|"+adv] = val
-        games_won += cached[i+"|"+adv]
-    return games_won
-
-def printgame(v,adv):
-    game = [0,0,0,0,0,0,0,0,0]
-    res = play_game(v,adv,game,True) 
-    print("winner: " + (v if res[0] >= 0 else adv))
-    print(res[1][0:3])
-    print(res[1][3:6])
-    print(res[1][6:9])
 
 
 def print_scores(score):
     for v in score:
         print(str(v[0]) + " " + v[1])
 
+KILL = -20000 * POP_SIZE
 
-pop = []
 
-def play():
-    game = [0,0,0,0,0,0,0,0,0]
-    while(True):
-        run_and_apply("+>,+[,<++>,]<-.",game)
-        print(game[0:3])
-        print(game[3:6])
-        print(game[6:9])
-        game[int(input())] = 2
-    exit()
-
-def filter_diverse(scores):
-    # Don't let one line of algorithms dominate. Encourage diverity.
+def friendlyname(bfcode):
+    chars = ["E","A","R","I","O","T","N","S","L","C"]
+    name = []
+    for x in str(hash(bfcode)  % (10 ** 8)):
+        name.append(chars[int(x)])
+    return ''.join(name)
+# This is a way to filter algorithms that are too similar, or honestly, just bad.
+# If an algorithm has a score of less than KILL, it is considered a bad algorithm.
+# Or, if the score between two algorithms is the same, we take the shorter one.
+def cull(scores):
     bucket = {}
     for i in scores:
         if(i[0] not in bucket):
@@ -194,10 +216,22 @@ def filter_diverse(scores):
     scores2.reverse()
     return scores2
 
-#play()
 
+def test():
+    game = [0,0,0,0,0,0,0,0,0]
+    while(True):
+        run_and_apply("<<+[<]>>++++++.",game,True)
+        print(game[0:3])
+        print(game[3:6])
+        print(game[6:9])
+        game[int(input())] = 2
+    exit()
+
+#test()
 #START
+
 #Generate the initial population
+pop = []
 for v in atomic_chars:
     pop.append(v)
 
@@ -208,77 +242,76 @@ for v in pop:
     scores.append([get_relative_fitness(v,pop),v])
 
 gen = 2
-# only need about 15 mutations.
-genitr = 30
+
+# we keep the best generated algorithms around as a benchmark.
+# the population does not test against, itself, but rather, the new popuation.
 best_gen = list(map(lambda n: n[1],scores))
 
-bests= []
-
+last_best = ""
 while (True):
-
     gen += 1
 
-    # intermediate filter or nah?
-    
-    # We have mutated all the parents from each generation.
-    # Lets see if any have surpassed their parents.
-    if(gen % genitr == 0):
+    # allow a step of mutation if the population has not reached the max size yet.
+    if(len(pop) <= POP_SIZE):
+        pop = pop + list(map(lambda n: mutaten(n, 5),pop))
 
-        print("c1->" + str(len(cached.values()) / (POP_SIZE * POP_SIZE * 4)))
-        if(len(cached.values()) > POP_SIZE * POP_SIZE * 4):
+        # make only unique programs
+        pop = set(pop)
+
+        # remove the null program
+        if "" in pop:
+            pop.remove("")
+
+        # remove programs with NOOPS which are just ineffecient.
+        pop =  [x for x in pop if not "[]" in x]
+        pop =  [x for x in pop if not "<>" in x]
+        pop =  [x for x in pop if not "><" in x]
+        pop =  [x for x in pop if not "+-" in x]
+        pop =  [x for x in pop if not "-+" in x]
+        pop =  [x for x in pop if not ".." in x]
+
+    # We have reached the max population. Compare and take the best.
+    else:
+
+        # ocassionally reset the cache, so it doesn't eat all the memory.
+        if(len(cached.values()) > 1000 * 1000 * 4):
             cached.clear()
 
-        print("c2->" + str(len(already_gen) / 100000))
-        if(len(already_gen) > 100000):
-            already_gen.clear()
-        
-        # This is a check to make sure that any algo that gets this far and dies does NOT come back.
-        pop2 = []
-        for p in pop:
-            if(p not in already_gen):
-                pop2.append(p)
-            already_gen[p] = True
-        pop = pop2
-
-        best_gen = best_gen + list(map(lambda n: n[1],scores))
+        print("\n---")
+        print("GENERATION " + str(gen))
+        print("POP SIZE: " + str(len(pop)))
+        print("LAST SURVIVOR SIZE: " + str(len(best_gen)))
+    
         scores = []
         for v in pop:
             scores.append([get_relative_fitness(v,best_gen),v])
     
-        # cut down the best algorithms into a diverse list, and set it as new best gen.
-        scores = filter_diverse(scores)
-        scores = scores[:POP_SIZE]
+        # now, pick the best algorithms in each class. they are the shortest ones that behaved the best against the "best gen" algos.
+        scores = cull(scores)
+        # set these as the new population.
+        scores = scores[:BEST_GEN_SIZE]
         best_gen = list(map(lambda n: n[1],scores))
         pop[:] = list(best_gen)
 
-        bests.append(scores[0][0])
+        print("---")
+        #print("SURVIVORS:\n" + str(best_gen))
+        print("BEST SCORE: " + str(scores[0][0]) + "\nWORST SCORE: " + str(scores[len(scores)-1][0]))
+        print("TOP FUNCTIONS")
+        print(friendlyname(scores[0][1]) + " : " + str(scores[0][0]))
+        print(friendlyname(scores[1][1]) + " : " + str(scores[1][0]))
+        print(friendlyname(scores[2][1]) + " : " + str(scores[2][0]))
 
-        print("GENERATION " + str(gen))
-        print(str(scores[0][0]) + " VS " + str(scores[len(scores)-1][0]))
+        if(last_best == friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])):
+            POP_SIZE = POP_SIZE * 1.5
+            print("stagnation detected. increasing population size...")
+        else:
+            POP_SIZE = BEST_GEN_SIZE * 3
+        last_best = friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])
+        print("---")
+        print("BEST GAME")
         printgame(scores[0][1],scores[1][1])
+        print("---")
         #print_scores(scores)
-
-        # business as usual. 
-        pop = list(map(lambda n: n[1],scores))
-
-
-    # allow another step of mutation if there are not many algos alive.
-    if(len(pop) <= POP_SIZE):
-        pop = pop + list(map(lambda n: mutate(n),pop))
-    else:
-        pop = list(map(lambda n: mutate(n),pop))
-
-    # make only unique programs
-    pop = set(pop)
-    
-    #print("prune")
-
-    # remove the null program
-    if "" in pop:
-        pop.remove("")
-
-    # remove useless []'s, which best case is NOOP and worse case is endless loop
-    pop =  [x for x in pop if not "[]" in x]
 
     #print("score")
     scores = []
