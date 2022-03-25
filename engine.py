@@ -220,14 +220,15 @@ def cull(scores):
 def test():
     game = [0,0,0,0,0,0,0,0,0]
     while(True):
-        run_and_apply("<<+[<]>>++++++.",game,True)
+        #run_and_apply("<<+[<]>>++++++.",game,True)
+        run_and_apply("<<++++++<<+++++[+>]<.",game,True)
         print(game[0:3])
         print(game[3:6])
         print(game[6:9])
         game[int(input())] = 2
     exit()
 
-#test()
+test()
 #START
 
 #Generate the initial population
@@ -235,6 +236,10 @@ pop = []
 for v in atomic_chars:
     pop.append(v)
 
+# boost generation with these AIs which start in the corner.
+pop.append("<<<<<<++++<<<<[>+>]-<.")
+pop.append("<<++++++<<++++[+>]<.")
+pop.append("+<<+++<<++[++>]<++.")
 scores = []
 
 #Compute fitness
@@ -297,9 +302,14 @@ while (True):
         #print("SURVIVORS:\n" + str(best_gen))
         print("BEST SCORE: " + str(scores[0][0]) + "\nWORST SCORE: " + str(scores[len(scores)-1][0]))
         print("TOP FUNCTIONS")
-        print(friendlyname(scores[0][1]) + " : " + str(scores[0][0]))
-        print(friendlyname(scores[1][1]) + " : " + str(scores[1][0]))
-        print(friendlyname(scores[2][1]) + " : " + str(scores[2][0]))
+        print(friendlyname(scores[0][1]) + " : " + str(scores[0][0]) + " (" + scores[0][1] + ")")
+        print(friendlyname(scores[1][1]) + " : " + str(scores[1][0]) + " (" + scores[1][1] + ")")
+        print(friendlyname(scores[2][1]) + " : " + str(scores[2][0]) + " (" + scores[2][1] + ")")
+
+        print("BOTTOM FUNCTIONS")
+        print(friendlyname(scores[-1][1]) + " : " + str(scores[-1][0]) + " (" + scores[-1][1] + ")")
+        print(friendlyname(scores[-2][1]) + " : " + str(scores[-2][0]) + " (" + scores[-2][1] + ")")
+        print(friendlyname(scores[-3][1]) + " : " + str(scores[-3][0]) + " (" + scores[-3][1] + ")")
 
         if(last_best == friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])):
             POP_SIZE = POP_SIZE * 1.5
