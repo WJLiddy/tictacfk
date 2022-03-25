@@ -32,8 +32,6 @@ def flip(game):
 WIN = 100
 # losing worth 50 (hey, you didn't crash!!)
 LOSE = 50
-# survival worth 0 - doesn't say much about you
-SURVIVE = 0
 # losing because you sent shit is -1000
 LOSE_OOB = -1000
 # losing because you did NOTHING is -5000
@@ -86,13 +84,14 @@ def play_game(i, adv, game, useinstr):
         # their turn
         game = flip(game)
         move = run_and_apply(adv,game,useinstr)
+
         if(move == 0):
             # they made a valid move and won
             if(win(game)):
                 return [LOSE, game]
         else:
             # they crashed
-            return [SURVIVE,game]
+            return [WIN,game]
         game = flip(game)
 
 # play a game against every other program in the population, and sum the scores.
@@ -108,9 +107,13 @@ def get_relative_fitness(i,pop):
 
             # Take points for winning, tieing, or losing, going second.
             # But, the opponent goes first.
+            # if em == 0 -> valid first move.
             em = run_and_apply(adv, game, False)
+            game = flip(game)
             if(em == 0):
                 val += play_game(i,adv,game, False)[0]
+            else:
+                val += WIN
             cached[i+"|"+adv] = val
         games_won += cached[i+"|"+adv]
     return games_won
@@ -221,7 +224,7 @@ def test():
     game = [0,0,0,0,0,0,0,0,0]
     while(True):
         #run_and_apply("<<+[<]>>++++++.",game,True)
-        run_and_apply("<<++++++<<+++++[+>]<.",game,True)
+        run_and_apply("++<<++++++<<<<[-]->+++>++++<+<<<<[>+>]<.",game,True)
         print(game[0:3])
         print(game[3:6])
         print(game[6:9])
@@ -320,6 +323,7 @@ while (True):
         print("---")
         print("BEST GAME")
         printgame(scores[0][1],scores[1][1])
+        printgame(scores[1][1],scores[0][1])
         print("---")
         #print_scores(scores)
 
