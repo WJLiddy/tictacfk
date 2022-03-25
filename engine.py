@@ -231,7 +231,6 @@ def test():
         game[int(input())] = 2
     exit()
 
-test()
 #START
 
 #Generate the initial population
@@ -240,9 +239,6 @@ for v in atomic_chars:
     pop.append(v)
 
 # boost generation with these AIs which start in the corner.
-pop.append("<<<<<<++++<<<<[>+>]-<.")
-pop.append("<<++++++<<++++[+>]<.")
-pop.append("+<<+++<<++[++>]<++.")
 scores = []
 
 #Compute fitness
