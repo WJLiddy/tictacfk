@@ -3,9 +3,6 @@ import random
 from os import system, name
 
 winrows = [[0,3,6],[1,4,7],[2,5,8],[0,1,2],[3,4,5],[6,7,8],[0,4,8],[2,4,6]]
-POP_SIZE = 3000
-# pop size of 200 is FAR too small.
-BEST_GEN_SIZE = 500
 
 # --- TIC TAC TOE LOGIC ---
 
@@ -29,16 +26,14 @@ def flip(game):
     return out
 
 # winning worth 100
-WIN = 100
-# losing worth 50 (hey, you didn't crash!!)
-LOSE = 50
-# losing because you sent shit is -1000
-LOSE_OOB = -1000
-# losing because you did NOTHING is -5000
-LOSE_NO_INPUT = -5000
-# losing because you ran out of computation time is the worst thing.
-# (you need to have an i-- before you can have a while{})
-LOSE_LOOP = -10000 * POP_SIZE
+WIN = 1
+# losing worth 0 (hey, you didn't crash!!)
+LOSE = 0
+# losing because you sent shit is -10 000
+LOSE_OOB = -100
+# losing because you did NOTHING is -100 000
+LOSE_NO_INPUT = -1000
+LOSE_LOOP_FLAG = -1000000
 
 # run and apply the brainfuck code to the game board. printstr if you want to see the new state.
 # returns 0 if success, otherwise, the penalty for an invalid output that means the program is invalid and should be stopped.
@@ -59,7 +54,7 @@ def run_and_apply(code, state, printstr):
         return LOSE_OOB
     #  you endless loop'd.
     if(out[0][0] == -1):
-        return LOSE_LOOP
+        return LOSE_LOOP_FLAG
     # set the piece, and continue.
     state[out[0][0]] = 1
     return 0
@@ -103,6 +98,8 @@ def get_relative_fitness(i,pop):
         if(i+"|"+adv not in cached):
             # Take points for winning, tieing, or losing, going first
             val = play_game(i,adv,game,False)[0]
+            if(val == LOSE_LOOP_FLAG):
+                return LOSE_LOOP_FLAG
             game = [0,0,0,0,0,0,0,0,0]
 
             # Take points for winning, tieing, or losing, going second.
@@ -134,7 +131,7 @@ MAX_INSTR = 256
 
 def mutaten(parent,N):
     out = parent
-    for i in range(random.randint(0,N)):
+    for i in range(random.randint(1,N)):
         out = mutate(out)
     return out
 
@@ -151,7 +148,7 @@ def mutate(parent):
                 child.insert(pos,char)
 
     # big chance to drop
-    if(len(child) > 0 and mut_type >= 4 and mut_type <= 13):
+    if(len(child) > 0 and mut_type >= 4 and mut_type <= 10):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -173,7 +170,7 @@ def mutate(parent):
         pass
 
     #loop - used sparingly
-    if(mut_type == 14):
+    if(mut_type >= 11):
         #insert loop. Generate a start position
         start = random.randint(0,len(child))
         end = random.randint(start+1,len(child)+1)
@@ -187,9 +184,6 @@ def mutate(parent):
 def print_scores(score):
     for v in score:
         print(str(v[0]) + " " + v[1])
-
-KILL = -20000 * POP_SIZE
-
 
 def friendlyname(bfcode):
     chars = ["E","A","R","I","O","T","N","S","L","C"]
@@ -210,7 +204,7 @@ def cull(scores):
     scores2 = []
     for i in bucket:
         opts = sorted(bucket[i], key=lambda x: len(x[1]))
-        if(opts[0][0] > KILL):
+        if(opts[0][0] != LOSE_LOOP_FLAG):
             # keep the shortest codes in the class
             for v in opts:
                 if(len(v[1]) == len(opts[0][1])):
@@ -224,7 +218,7 @@ def test():
     game = [0,0,0,0,0,0,0,0,0]
     while(True):
         #run_and_apply("<<+[<]>>++++++.",game,True)
-        run_and_apply("++<<++++++<<<<[-]->+++>++++<+<<<<[>+>]<.",game,True)
+        run_and_apply("<<+++++++<<++++<+<<<<[>+>][<]<.",game,True)
         print(game[0:3])
         print(game[3:6])
         print(game[6:9])
@@ -233,97 +227,107 @@ def test():
 
 #START
 
-#Generate the initial population
-pop = []
-for v in atomic_chars:
-    pop.append(v)
+def runengine(gen_max):
+    BEST_GEN_SIZE = 500
+    POP_RATIO = 3
+    POP_SIZE = BEST_GEN_SIZE * POP_RATIO
 
-# boost generation with these AIs which start in the corner.
-scores = []
+    #Generate the initial population
+    pop = []
 
-#Compute fitness
-for v in pop:
-    scores.append([get_relative_fitness(v,pop),v])
+    pop.append("<<[-<+<+[-<[<]>>[>]]]<++++++.")
+    pop.append("(<<<[>+>]<++++++.")
+    pop.append("(<++<<<+<[-<<]>+[[>+++>]]<+++.-")
+    pop.append("<<++++++<<+++++<+<<<<[>+>]<.")
 
-gen = 2
+    #CTNRSCLC : -196 (<<++++++<<+++++<+[<<<<[[>+>]]]<.)
+    #NCTOCTEL : -786 (<<+++++++<<++++<+<<<<[>+>][<]<.)
+    for v in atomic_chars:
+        pop.append(v)
 
-# we keep the best generated algorithms around as a benchmark.
-# the population does not test against, itself, but rather, the new popuation.
-best_gen = list(map(lambda n: n[1],scores))
-
-last_best = ""
-while (True):
-    gen += 1
-
-    # allow a step of mutation if the population has not reached the max size yet.
-    if(len(pop) <= POP_SIZE):
-        pop = pop + list(map(lambda n: mutaten(n, 5),pop))
-
-        # make only unique programs
-        pop = set(pop)
-
-        # remove the null program
-        if "" in pop:
-            pop.remove("")
-
-        # remove programs with NOOPS which are just ineffecient.
-        pop =  [x for x in pop if not "[]" in x]
-        pop =  [x for x in pop if not "<>" in x]
-        pop =  [x for x in pop if not "><" in x]
-        pop =  [x for x in pop if not "+-" in x]
-        pop =  [x for x in pop if not "-+" in x]
-        pop =  [x for x in pop if not ".." in x]
-
-    # We have reached the max population. Compare and take the best.
-    else:
-
-        # ocassionally reset the cache, so it doesn't eat all the memory.
-        if(len(cached.values()) > 1000 * 1000 * 4):
-            cached.clear()
-
-        print("\n---")
-        print("GENERATION " + str(gen))
-        print("POP SIZE: " + str(len(pop)))
-        print("LAST SURVIVOR SIZE: " + str(len(best_gen)))
-    
-        scores = []
-        for v in pop:
-            scores.append([get_relative_fitness(v,best_gen),v])
-    
-        # now, pick the best algorithms in each class. they are the shortest ones that behaved the best against the "best gen" algos.
-        scores = cull(scores)
-        # set these as the new population.
-        scores = scores[:BEST_GEN_SIZE]
-        best_gen = list(map(lambda n: n[1],scores))
-        pop[:] = list(best_gen)
-
-        print("---")
-        #print("SURVIVORS:\n" + str(best_gen))
-        print("BEST SCORE: " + str(scores[0][0]) + "\nWORST SCORE: " + str(scores[len(scores)-1][0]))
-        print("TOP FUNCTIONS")
-        print(friendlyname(scores[0][1]) + " : " + str(scores[0][0]) + " (" + scores[0][1] + ")")
-        print(friendlyname(scores[1][1]) + " : " + str(scores[1][0]) + " (" + scores[1][1] + ")")
-        print(friendlyname(scores[2][1]) + " : " + str(scores[2][0]) + " (" + scores[2][1] + ")")
-
-        print("BOTTOM FUNCTIONS")
-        print(friendlyname(scores[-1][1]) + " : " + str(scores[-1][0]) + " (" + scores[-1][1] + ")")
-        print(friendlyname(scores[-2][1]) + " : " + str(scores[-2][0]) + " (" + scores[-2][1] + ")")
-        print(friendlyname(scores[-3][1]) + " : " + str(scores[-3][0]) + " (" + scores[-3][1] + ")")
-
-        if(last_best == friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])):
-            POP_SIZE = POP_SIZE * 1.5
-            print("stagnation detected. increasing population size...")
-        else:
-            POP_SIZE = BEST_GEN_SIZE * 3
-        last_best = friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])
-        print("---")
-        print("BEST GAME")
-        printgame(scores[0][1],scores[1][1])
-        printgame(scores[1][1],scores[0][1])
-        print("---")
-        #print_scores(scores)
-
-    #print("score")
+    # boost generation with these AIs which start in the corner.
     scores = []
 
+    #Compute fitness
+    for v in pop:
+        scores.append([get_relative_fitness(v,pop),v])
 
+    gen = 2
+
+    # we keep the best generated algorithms around as a benchmark.
+    # the population does not test against, itself, but rather, the new popuation.
+    best_gen = list(map(lambda n: n[1],scores))
+
+    last_best = ""
+    while (gen < gen_max):
+        gen += 1
+
+        # allow a step of mutation if the population has not reached the max size yet.
+        if(len(pop) <= POP_SIZE):
+            pop = pop + list(map(lambda n: mutaten(n, 5),pop))
+
+            # make only unique programs
+            pop = set(pop)
+
+            # remove the null program
+            if "" in pop:
+                pop.remove("")
+
+            # remove programs with NOOPS which are just ineffecient.
+            pop =  [x for x in pop if not "[]" in x]
+            pop =  [x for x in pop if not "<>" in x]
+            pop =  [x for x in pop if not "><" in x]
+            pop =  [x for x in pop if not "+-" in x]
+            pop =  [x for x in pop if not "-+" in x]
+            pop =  [x for x in pop if not ".." in x]
+
+        # We have reached the max population. Compare and take the best.
+        else:
+
+            # ocassionally reset the cache, so it doesn't eat all the memory.
+            if(len(cached.values()) > ((BEST_GEN_SIZE * POP_RATIO) * (BEST_GEN_SIZE * POP_RATIO)) * 4):
+                cached.clear()
+
+            print("\n---")
+            print("GENERATION " + str(gen))
+            print("POP SIZE: " + str(len(pop)))
+            print("LAST SURVIVOR SIZE: " + str(len(best_gen)))
+        
+            scores = []
+            for v in pop:
+                scores.append([get_relative_fitness(v,best_gen),v])
+        
+            # now, pick the best algorithms in each class. they are the shortest ones that behaved the best against the "best gen" algos.
+            scores = cull(scores)
+            # set these as the new population.
+            scores = scores[:BEST_GEN_SIZE]
+            best_gen = list(map(lambda n: n[1],scores))
+            pop[:] = list(best_gen)
+
+            print("---")
+            #print("SURVIVORS:\n" + str(best_gen))
+            print("TOP FUNCTIONS")
+            print(friendlyname(scores[0][1]) + " : " + str(scores[0][0]) + " (" + scores[0][1] + ")")
+            print(friendlyname(scores[1][1]) + " : " + str(scores[1][0]) + " (" + scores[1][1] + ")")
+            print(friendlyname(scores[2][1]) + " : " + str(scores[2][0]) + " (" + scores[2][1] + ")")
+
+            print("BOTTOM FUNCTIONS")
+            print(friendlyname(scores[-1][1]) + " : " + str(scores[-1][0]) + " (" + scores[-1][1] + ")")
+            print(friendlyname(scores[-2][1]) + " : " + str(scores[-2][0]) + " (" + scores[-2][1] + ")")
+            print(friendlyname(scores[-3][1]) + " : " + str(scores[-3][0]) + " (" + scores[-3][1] + ")")
+
+            if(last_best == friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])):
+                POP_SIZE = POP_SIZE * POP_RATIO
+                print("stagnation detected. increasing population size...")
+            else:
+                POP_SIZE = BEST_GEN_SIZE * POP_RATIO
+            last_best = friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])
+            print("---")
+            print("BEST GAME")
+            printgame(scores[0][1],scores[1][1])
+            printgame(scores[1][1],scores[0][1])
+            print("---")
+            #print_scores(scores)
+
+
+runengine(5000)
