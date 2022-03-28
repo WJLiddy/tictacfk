@@ -57,9 +57,16 @@ def run_and_apply(code, state, printstr):
 
 # --- ANALYSIS CODE --- 
 
+# one million i guess lol
+CACHE_SIZE = 1000000
+
+# cache results of game already played.
 cached = {}
+# do not submit functions that were culled
+culled_blacklist = {}
 
 # play a game between brainfuck programs "i" and "adv". Return the weighted value of the result (see above) and the board state.
+# 99 of our functions spend time in here so call as infrequently as possible.
 def play_game(i, adv, game, useinstr):
     while(True):
         # our turn
@@ -84,29 +91,31 @@ def play_game(i, adv, game, useinstr):
             return [WIN,game]
         game = flip(game)
 
+def run_game_set(i,adv):
+    game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    # Take points for winning, tieing, or losing, going first
+    val = play_game(i,adv,game,False)[0]
+    if(val == LOSE_LOOP_FLAG):
+        return LOSE_LOOP_FLAG
+
+    # Now, the opponent goes first.
+    game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    # if em == 0 -> valid first move.
+    em = run_and_apply(adv, game, False)
+    game = flip(game)
+    if(em == 0):
+        val += play_game(i,adv,game, False)[0]
+    else:
+        val += WIN
+    return val
+
 # play a game against every other program in the population, and sum the scores.
 def get_relative_fitness(i,pop):
     games_won = 0
     for adv in pop:
-        game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         # cache games we've already played.
         if(i+"|"+adv not in cached):
-            # Take points for winning, tieing, or losing, going first
-            val = play_game(i,adv,game,False)[0]
-            if(val == LOSE_LOOP_FLAG):
-                return LOSE_LOOP_FLAG
-            game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-
-            # Take points for winning, tieing, or losing, going second.
-            # But, the opponent goes first.
-            # if em == 0 -> valid first move.
-            em = run_and_apply(adv, game, False)
-            game = flip(game)
-            if(em == 0):
-                val += play_game(i,adv,game, False)[0]
-            else:
-                val += WIN
-            cached[i+"|"+adv] = val
+            cached[i+"|"+adv] = run_game_set(i,adv)
         games_won += cached[i+"|"+adv]
     return games_won
 
@@ -211,10 +220,18 @@ def cull(scores):
             for v in opts:
                 if(len(v[1]) == len(opts[0][1])):
                     scores2.append(v)
+                else:
+                    culled_blacklist[v[1]] = True
     scores2 = sorted(scores2, key=lambda x: x[0])
     scores2.reverse()
     return scores2
 
+def remove_blacklisted(pop):
+    ret = []
+    for i in pop:
+        if(i not in culled_blacklist):
+            ret.append(i)
+    return ret
 
 def test():
     game = [0,0,0,0,0,0,0,0,0]
@@ -237,10 +254,10 @@ def runengine(gen_max):
     #Generate the initial population
     pop = []
 
-    # some good starter functions
-    pop.append("<<<<+[[<<<]+[<]<<<++++<<<++[[<<[<<[>>>>[>>>[>]]]]+>]]]>.")
-    pop.append("<<<+[[<<+<<]+[<]<<<+++<<<++[<<[<<[+>>>>>>]]+>]]>.")
-    pop.append("<++++++<<<+++[[++<<<]+<<<<+<<<++[<<[<[>>>>>>>[>>]]]+>]]>.")
+    # some good starter functions, use at your own risk. (these are pretty good, but could stifle diversity.)
+    # pop.append("<<<<+[[<<<]+[<]<<<++++<<<++[[<<[<<[>>>>[>>>[>]]]]+>]]]>.")
+    # pop.append("<<<+[[<<+<<]+[<]<<<+++<<<++[<<[<<[+>>>>>>]]+>]]>.")
+    # pop.append("<++++++<<<+++[[++<<<]+<<<<+<<<++[<<[<[>>>>>>>[>>]]]+>]]>.")
 
     for v in atomic_chars:
         pop.append(v)
@@ -264,7 +281,7 @@ def runengine(gen_max):
 
         # allow a step of mutation if the population has not reached the max size yet.
         if(len(pop) <= POP_SIZE):
-            pop = pop + list(map(lambda n: mutaten(n, 5),pop))
+            pop = pop + list(map(lambda n: mutaten(n, 10),pop))
 
             # make only unique programs
             pop = set(pop)
@@ -285,22 +302,35 @@ def runengine(gen_max):
         else:
 
             # ocassionally reset the cache, so it doesn't eat all the memory.
-            if(len(cached.values()) > ((BEST_GEN_SIZE * POP_RATIO) * (BEST_GEN_SIZE * POP_RATIO)) * 4):
+            if(len(cached.values()) > 10 * CACHE_SIZE):
                 cached.clear()
+                print("matchup cache cleared.")
 
+            # ocassionally reset the cache, so it doesn't eat all the memory.
+            if(len(culled_blacklist.values()) > CACHE_SIZE):
+                culled_blacklist.clear()
+                print("blacklist cache cleared.")
+
+            # remove any functions we culled in the past.
             print("\n---")
             print("GENERATION " + str(gen))
             print("POP SIZE: " + str(len(pop)))
+            pop = remove_blacklisted(pop)
+            print("POP SIZE AFTER BLACKLIST: " + str(len(pop)))
             print("LAST SURVIVOR SIZE: " + str(len(best_gen)))
         
             scores = []
             for v in pop:
                 scores.append([get_relative_fitness(v,best_gen),v])
-        
             # now, pick the best algorithms in each class. they are the shortest ones that behaved the best against the "best gen" algos.
             scores = cull(scores)
+            print(str(len(scores)) + " unique children were generated.")
+
+            if(len(scores) > BEST_GEN_SIZE):
+                print(str(len(scores) - BEST_GEN_SIZE) + " children were dropped due to population limits")
             # set these as the new population.
             scores = scores[:BEST_GEN_SIZE]
+            
             best_gen = list(map(lambda n: n[1],scores))
             pop[:] = list(best_gen)
 
@@ -327,7 +357,8 @@ def runengine(gen_max):
             printgame(scores[0][1],scores[1][1])
             printgame(scores[1][1],scores[0][1])
             print("---")
+            print("Now mutating from " + str(len(pop)) + " parents.")
             #print_scores(scores)
+    print(best_gen)
 
-
-runengine(50)
+runengine(300)
