@@ -16,13 +16,8 @@ def win(boardstate):
 # flip tic tac toe game board.
 def flip(game):
     out = []
-    for v in game:
-        if(v == 1):
-            out.append(2)
-        elif(v == 2):
-            out.append(1)
-        else:
-            out.append(v)
+    out = game[9:18]
+    out += game[0:9]
     return out
 
 # winning worth 100
@@ -39,7 +34,7 @@ LOSE_LOOP_FLAG = -1000000
 # returns 0 if success, otherwise, the penalty for an invalid output that means the program is invalid and should be stopped.
 def run_and_apply(code, state, printstr):
     #,>,>,>... just loads the state into memory
-    out = run(",>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
+    out = run(",>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>"+code,state,MAX_INSTR)
     if(printstr):
         print("instr executed: " + str(out[1]))
         print("Move was " + str(out[0]))
@@ -50,7 +45,7 @@ def run_and_apply(code, state, printstr):
     if(out[0][0] > 8):
         return LOSE_OOB
     #  you tried to place a move where there already was one.
-    if(state[out[0][0]] != 0):
+    if(state[out[0][0]] != 0 or state[out[0][0]+9] != 0):
         return LOSE_OOB
     #  you endless loop'd.
     if(out[0][0] == -1):
@@ -93,14 +88,14 @@ def play_game(i, adv, game, useinstr):
 def get_relative_fitness(i,pop):
     games_won = 0
     for adv in pop:
-        game = [0,0,0,0,0,0,0,0,0]
+        game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         # cache games we've already played.
         if(i+"|"+adv not in cached):
             # Take points for winning, tieing, or losing, going first
             val = play_game(i,adv,game,False)[0]
             if(val == LOSE_LOOP_FLAG):
                 return LOSE_LOOP_FLAG
-            game = [0,0,0,0,0,0,0,0,0]
+            game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
             # Take points for winning, tieing, or losing, going second.
             # But, the opponent goes first.
@@ -117,17 +112,21 @@ def get_relative_fitness(i,pop):
 
 # print the result between two programs.
 def printgame(v,adv):
-    game = [0,0,0,0,0,0,0,0,0]
+    game = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
     res = play_game(v,adv,game,True) 
     print("winner: " + (v if res[0] >= 0 else adv))
     print(res[1][0:3])
     print(res[1][3:6])
     print(res[1][6:9])
+    print("---")
+    print(res[1][9:12])
+    print(res[1][12:15])
+    print(res[1][15:18])
 
 # --- GENETIC ALGO CODE ---
 atomic_chars = "<>+-."
 # don't include "," since there's nothing else to read.
-MAX_INSTR = 256
+MAX_INSTR = 512
 
 def mutaten(parent,N):
     out = parent
@@ -138,17 +137,20 @@ def mutaten(parent,N):
 # simple mutation, adds or deletes atomic character(s) or a list.
 def mutate(parent):
     child = list(parent)
-    mut_type = random.randint(0,14)
+    # 1/3 chance to add
+    # 1/3 chance to delete
+    # 1/3 chance for list.
+    mut_type = random.randint(0,15)
 
     # insert sometimes.
     if(mut_type < 3):
             char = random.choice(atomic_chars)
             pos = random.randint(0,len(child))
-            for i in range(random.randint(1,5)):
+            for i in range(random.randint(1,4)):
                 child.insert(pos,char)
 
     # big chance to drop
-    if(len(child) > 0 and mut_type >= 4 and mut_type <= 10):
+    if(len(child) > 0 and mut_type >= 4 and mut_type <= 12):
 
         to_del_idx = random.randint(0,len(child)-1)
         value_to_del = child[to_del_idx]
@@ -170,7 +172,7 @@ def mutate(parent):
         pass
 
     #loop - used sparingly
-    if(mut_type >= 11):
+    if(mut_type >= 13):
         #insert loop. Generate a start position
         start = random.randint(0,len(child))
         end = random.randint(start+1,len(child)+1)
@@ -235,13 +237,11 @@ def runengine(gen_max):
     #Generate the initial population
     pop = []
 
-    pop.append("<<[-<+<+[-<[<]>>[>]]]<++++++.")
-    pop.append("(<<<[>+>]<++++++.")
-    pop.append("(<++<<<+<[-<<]>+[[>+++>]]<+++.-")
-    pop.append("<<++++++<<+++++<+<<<<[>+>]<.")
+    # some good starter functions
+    pop.append("<<<<+[[<<<]+[<]<<<++++<<<++[[<<[<<[>>>>[>>>[>]]]]+>]]]>.")
+    pop.append("<<<+[[<<+<<]+[<]<<<+++<<<++[<<[<<[+>>>>>>]]+>]]>.")
+    pop.append("<++++++<<<+++[[++<<<]+<<<<+<<<++[<<[<[>>>>>>>[>>]]]+>]]>.")
 
-    #CTNRSCLC : -196 (<<++++++<<+++++<+[<<<<[[>+>]]]<.)
-    #NCTOCTEL : -786 (<<+++++++<<++++<+<<<<[>+>][<]<.)
     for v in atomic_chars:
         pop.append(v)
 
@@ -317,7 +317,7 @@ def runengine(gen_max):
             print(friendlyname(scores[-3][1]) + " : " + str(scores[-3][0]) + " (" + scores[-3][1] + ")")
 
             if(last_best == friendlyname(scores[0][1])+friendlyname(scores[1][1])+friendlyname(scores[2][1])):
-                POP_SIZE = POP_SIZE * POP_RATIO
+                POP_SIZE = min(10000,POP_SIZE * POP_RATIO)
                 print("stagnation detected. increasing population size...")
             else:
                 POP_SIZE = BEST_GEN_SIZE * POP_RATIO
@@ -330,4 +330,4 @@ def runengine(gen_max):
             #print_scores(scores)
 
 
-runengine(5000)
+runengine(50)
